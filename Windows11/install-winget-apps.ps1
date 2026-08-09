@@ -95,6 +95,37 @@ $manualPackages = @(
 
 $failed = New-Object System.Collections.Generic.List[string]
 
+$wslDistribution = 'Ubuntu-24.04'
+$wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+
+if (-not $wsl) {
+    Write-Host "[FAIL] WSL 2, wsl.exe was not found." -ForegroundColor Red
+    $failed.Add("WSL 2 [$wslDistribution]")
+} else {
+    $installedWslDistributions = @(
+        & $wsl.Source --list --quiet 2>$null |
+            ForEach-Object { ($_ -replace "`0", '').Trim() } |
+            Where-Object { $_ }
+    )
+
+    if ($installedWslDistributions -contains $wslDistribution) {
+        Write-Host "[SKIP] WSL 2 [$wslDistribution] is already installed." -ForegroundColor Yellow
+    } else {
+        Write-Host ""
+        Write-Host ">>> Installing WSL 2 [$wslDistribution]" -ForegroundColor Cyan
+        & $wsl.Source --install -d $wslDistribution --no-launch | Out-Host
+        $wslExitCode = $LASTEXITCODE
+
+        if ($wslExitCode -in @(0, 3010)) {
+            Write-Host "[OK] WSL 2 [$wslDistribution]" -ForegroundColor Green
+            Write-Host "[INFO] Restart Windows before launching Ubuntu for the first time." -ForegroundColor Yellow
+        } else {
+            Write-Host "[FAIL] WSL 2 [$wslDistribution], exit code: $wslExitCode" -ForegroundColor Red
+            $failed.Add("WSL 2 [$wslDistribution]")
+        }
+    }
+}
+
 foreach ($package in $packages) {
     $ok = Install-WingetPackage -Package $package
     if (-not $ok) {
@@ -106,9 +137,9 @@ Write-Host ""
 Write-Host "========== Install result ==========" -ForegroundColor Cyan
 
 if ($failed.Count -eq 0) {
-    Write-Host "All winget packages finished successfully." -ForegroundColor Green
+    Write-Host "All requested installations finished successfully." -ForegroundColor Green
 } else {
-    Write-Host "The following packages failed. Check them one by one:" -ForegroundColor Red
+    Write-Host "The following installations failed. Check them one by one:" -ForegroundColor Red
     $failed | ForEach-Object { Write-Host " - $_" -ForegroundColor Red }
     exit 1
 }
