@@ -23,7 +23,7 @@ function Install-WingetPackage {
 
     if ($SkipStore -and $Package.Source -eq 'msstore') {
         Write-Host "[SKIP] $($Package.Name) uses the msstore source and was skipped by -SkipStore." -ForegroundColor Yellow
-        return $true
+        return 'Skipped'
     }
 
     $args = @(
@@ -45,11 +45,11 @@ function Install-WingetPackage {
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "[OK] $($Package.Name)" -ForegroundColor Green
-        return $true
+        return 'Succeeded'
     }
 
     Write-Host "[FAIL] $($Package.Name), exit code: $LASTEXITCODE" -ForegroundColor Red
-    return $false
+    return 'Failed'
 }
 
 Test-Winget
@@ -94,6 +94,7 @@ $manualPackages = @(
 )
 
 $failed = New-Object System.Collections.Generic.List[string]
+$skipped = New-Object System.Collections.Generic.List[string]
 
 $wslDistribution = 'Ubuntu-24.04'
 $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
@@ -127,8 +128,10 @@ if (-not $wsl) {
 }
 
 foreach ($package in $packages) {
-    $ok = Install-WingetPackage -Package $package
-    if (-not $ok) {
+    $installationResult = Install-WingetPackage -Package $package
+    if ($installationResult -eq 'Skipped') {
+        $skipped.Add("$($package.Name) [$($package.Id)]")
+    } elseif ($installationResult -eq 'Failed') {
         $failed.Add("$($package.Name) [$($package.Id)]")
     }
 }
@@ -137,11 +140,16 @@ Write-Host ""
 Write-Host "========== Install result ==========" -ForegroundColor Cyan
 
 if ($failed.Count -eq 0) {
-    Write-Host "All requested installations finished successfully." -ForegroundColor Green
+    Write-Host "All attempted installations finished successfully." -ForegroundColor Green
 } else {
     Write-Host "The following installations failed. Check them one by one:" -ForegroundColor Red
     $failed | ForEach-Object { Write-Host " - $_" -ForegroundColor Red }
-    exit 1
+}
+
+if ($skipped.Count -gt 0) {
+    Write-Host ""
+    Write-Host "Skipped by request:" -ForegroundColor Yellow
+    $skipped | ForEach-Object { Write-Host " - $_" -ForegroundColor Yellow }
 }
 
 Write-Host ""
@@ -155,3 +163,7 @@ Write-Host "Examples:"
 Write-Host "  powershell -ExecutionPolicy Bypass -File .\install-winget-apps.ps1"
 Write-Host "  powershell -ExecutionPolicy Bypass -File .\install-winget-apps.ps1 -Silent"
 Write-Host "  powershell -ExecutionPolicy Bypass -File .\install-winget-apps.ps1 -SkipStore"
+
+if ($failed.Count -gt 0) {
+    exit 1
+}
