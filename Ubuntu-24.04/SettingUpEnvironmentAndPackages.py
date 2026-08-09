@@ -97,6 +97,8 @@ ALL_PACKAGES: tuple[str, ...] = (
     *MYSQL_PACKAGES,
 )
 
+NOT_DETECTED = "未检测到 / not detected"
+
 
 class InstallError(RuntimeError):
     """安装失败时抛出的异常。 / Raised when installation fails."""
@@ -299,10 +301,10 @@ def get_first_line(command: Sequence[str]) -> str:
             stderr=subprocess.STDOUT,
         )
     except (FileNotFoundError, subprocess.CalledProcessError):
-        return "未检测到 / not detected"
+        return NOT_DETECTED
 
     lines = result.stdout.strip().splitlines()
-    return lines[0] if lines else "未检测到 / not detected"
+    return lines[0] if lines else NOT_DETECTED
 
 
 def pkg_config_has(module: str) -> bool:
@@ -324,6 +326,8 @@ def verify_installation(*, dry_run: bool) -> None:
         return
 
     print("\n========== 安装验证 / Installation verification ==========")
+    verification_failures: list[str] = []
+
     # 读取各工具版本输出的第一行，提供简洁的安装结果摘要。
     # Read the first version-output line from each tool for a concise installation summary.
     checks = (
@@ -336,7 +340,10 @@ def verify_installation(*, dry_run: bool) -> None:
         ("MySQL client", ["mysql", "--version"]),
     )
     for name, command in checks:
-        print(f"{name}: {get_first_line(command)}")
+        version = get_first_line(command)
+        print(f"{name}: {version}")
+        if version == NOT_DETECTED:
+            verification_failures.append(name)
 
     # 不同 Ubuntu 版本可能使用 qmake 或 qmake-qt5 作为命令名。
     # Ubuntu releases may expose the command as either qmake or qmake-qt5.
@@ -344,8 +351,11 @@ def verify_installation(*, dry_run: bool) -> None:
     if qmake:
         qt_version = get_first_line([qmake, "-query", "QT_VERSION"])
         print(f"Qt: {qt_version} ({qmake})")
+        if qt_version == NOT_DETECTED:
+            verification_failures.append("Qt qmake")
     else:
         print("Qt: 未检测到 qmake / qmake not detected")
+        verification_failures.append("Qt qmake")
 
     # pkg-config 检查可确认编译器能够发现所需 Qt 和 FFmpeg 开发模块。
     # pkg-config checks confirm that the compiler can discover the required development modules.
@@ -362,6 +372,8 @@ def verify_installation(*, dry_run: bool) -> None:
 
     missing_qt = [module for module in qt_modules if not pkg_config_has(module)]
     missing_ffmpeg = [module for module in ffmpeg_modules if not pkg_config_has(module)]
+    verification_failures.extend(f"Qt pkg-config: {module}" for module in missing_qt)
+    verification_failures.extend(f"FFmpeg pkg-config: {module}" for module in missing_ffmpeg)
 
     print(
         "Qt pkg-config 模块 / Qt pkg-config modules: "
@@ -381,6 +393,13 @@ def verify_installation(*, dry_run: bool) -> None:
     json_header = Path("/usr/include/nlohmann/json.hpp")
     connector_header = Path("/usr/include/mysql_driver.h")
     qt_mysql_plugin_candidates = tuple(Path("/usr/lib").glob("*/qt5/plugins/sqldrivers/libqsqlmysql.so"))
+
+    if not json_header.is_file():
+        verification_failures.append("nlohmann/json header")
+    if not connector_header.is_file():
+        verification_failures.append("MySQL Connector/C++ header")
+    if not qt_mysql_plugin_candidates:
+        verification_failures.append("Qt MySQL driver")
 
     print(
         "nlohmann/json: "
@@ -402,20 +421,30 @@ def verify_installation(*, dry_run: bool) -> None:
     # systemctl 在未启用 systemd 的 WSL 实例中可能不存在或无法返回状态。
     # systemctl may be absent or unable to report status when WSL runs without systemd.
     if shutil.which("systemctl"):
-        mysql_state = subprocess.run(
+        mysql_result = subprocess.run(
             ["systemctl", "is-active", "mysql"],
             check=False,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-        ).stdout.strip()
+        )
+        mysql_state = mysql_result.stdout.strip()
         if mysql_state:
             print(f"MySQL service: {mysql_state}")
+            if mysql_state != "active":
+                verification_failures.append(f"MySQL service ({mysql_state})")
         else:
             print(
                 "MySQL service: 无法通过 systemctl 检测（WSL 中可能未启用 systemd） / "
                 "could not query systemctl (systemd may be disabled in WSL)"
             )
+
+    if verification_failures:
+        details = ", ".join(dict.fromkeys(verification_failures))
+        raise InstallError(
+            "安装验证失败，以下组件不可用 / Installation verification failed; "
+            f"the following components are unavailable: {details}"
+        )
 
     print("\n安装完成。脚本未修改 PATH、.bashrc、.profile 或 /etc/environment。")
     print("Installation completed without modifying PATH or shell environment files.")
