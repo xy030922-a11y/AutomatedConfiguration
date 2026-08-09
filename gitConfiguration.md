@@ -38,10 +38,12 @@ git config user.name "y"
 git config user.email "example@gmail.com"
 ```
 
-## 查看代理配置
+## 设置全局代理配置
+
+以下示例假设本地代理地址为 `127.0.0.1:7890`，请根据实际代理端口修改：
 
 ```bash
-git config --global --get http.proxy
-git config --global --get https.proxy
+git config --global http.proxy "http://127.0.0.1:7890"
+git config --global https.proxy "http://127.0.0.1:7890"
 ```
 
