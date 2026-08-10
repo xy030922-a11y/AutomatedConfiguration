@@ -107,6 +107,7 @@ $packages = @(
     @{ Name = 'Visual Studio Code'; Id = 'Microsoft.VisualStudioCode'; Source = 'winget' },
     @{ Name = 'Visual Studio Community'; Id = 'Microsoft.VisualStudio.Community'; Source = 'winget'; NoSilent = $true },
     @{ Name = 'MSYS2'; Id = 'MSYS2.MSYS2'; Source = 'winget' },
+    @{ Name = 'OBS Studio'; Id = 'OBSProject.OBSStudio'; Source = 'winget' },
     @{ Name = 'PotPlayer'; Id = 'Daum.PotPlayer'; Source = 'winget' },
     @{ Name = 'QQ NT'; Id = 'Tencent.QQ.NT'; Source = 'winget' },
     @{ Name = 'QQ Music'; Id = 'Tencent.QQMusic'; Source = 'winget' },
